@@ -2,8 +2,7 @@
 import sys
 import copy
 from google.protobuf.internal import wire_format, encoder, decoder
-import varint
-import type_maps
+from . import varint, type_maps
 
 
 def decode_guess(buf, pos):

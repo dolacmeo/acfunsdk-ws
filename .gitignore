@@ -176,6 +176,7 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+src/acfunsdk
 ffmpeg.exe
 *.cookies
 scratch.py

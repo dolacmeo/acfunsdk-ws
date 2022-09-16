@@ -2,9 +2,7 @@
    functions, wiretypes and default types
 """
 from google.protobuf.internal import wire_format
-import varint
-import fixed
-import length_delim
+from . import varint, fixed, length_delim
 
 encoders = {
     'uint': varint.encode_uvarint,

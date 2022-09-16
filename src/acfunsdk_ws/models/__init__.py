@@ -4,18 +4,15 @@ import json
 import gzip
 import proto
 import base64
-import random
 import filetype
-import threading
-from acfunsdk.source import apis
 from hashlib import md5
 from Crypto import Random
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from blackboxprotobuf import protobuf_to_json
 from google.protobuf.json_format import MessageToJson
-from google.protobuf.pyext.cpp_message import GeneratedProtocolMessageType
-from google.protobuf.pyext._message import RepeatedScalarContainer
+from google.protobuf.internal.python_message import GeneratedProtocolMessageType
+from google.protobuf.internal.containers import RepeatedScalarFieldContainer
 from .Im import PacketHeader_pb2, \
     UpstreamPayload_pb2, DownstreamPayload_pb2, \
     RegisterRequest_pb2, RegisterResponse_pb2, \
@@ -53,6 +50,11 @@ from .Live import ZtLiveCsCmd_pb2, \
     ZtLiveScTicketInvalid_pb2
 
 
+apis = {
+    'im_image_upload': "https://sixinpic.kuaishou.com/rest/v2/app/upload",
+}
+
+
 class ErrorMessage(proto.Message):
     errorCode = proto.Field(proto.INT32, number=3)
     errorMessage = proto.Field(proto.STRING, number=5)
@@ -78,6 +80,7 @@ def proto_user_serialize(uid: int):
 
 class AcProtos:
     seqId = 0
+    live_obj = None
     live_room = None
     live_ticket = None
     live_heartbeat = 0
@@ -258,7 +261,7 @@ class AcProtos:
                 loader = self.live_messages.get(f"{msg_type}.loader", {}).get(f"{signal}")
                 if loader is not None:
                     loader = loader()
-                    if isinstance(item.payload, RepeatedScalarContainer):
+                    if isinstance(item.payload, RepeatedScalarFieldContainer):
                         data['payload'] = list()
                         for x in item.payload:
                             loader.ParseFromString(x)
@@ -452,70 +455,22 @@ class AcProtos:
         return self.Message_Request(target_uid, byte_content, 1)
 
     def ZtLiveInteractive_CsCmd(self, cmd: str, cmd_payload):
-        if self.live_room is None:
+        if self.live_obj is None:
             raise ValueError(f"Need Enter Live Rome First!!!\nUSE: ZtLiveCsEnterRoom_Request(uid)")
         payload = ZtLiveCsCmd_pb2.ZtLiveCsCmd()
         payload.cmdType = cmd
         payload.payload = cmd_payload.SerializeToString()
-        payload.liveId = self.live_room.get("liveId")
-        payload.ticket = self.live_ticket
+        payload.liveId = self.live_obj.liveId
+        payload.ticket = self.live_obj.availableTickets[0]
         return self.encode(2, "Global.ZtLiveInteractive.CsCmd", payload, "mainApp")
 
-    def get_aclive_room_info(self, uid: int):
-        param = {
-            "subBiz": "mainApp",
-            "kpn": "ACFUN_APP",
-            "kpf": "PC_WEB",
-            "userId": self.acer.uid,
-            "did": self.acer.did
-        }
-        param = self.acer.update_token(param)
-        form_data = {"authorId": uid, "pullStreamType": "FLV"}
-        api_req = self.acer.client.post(apis['live_play'], params=param, data=form_data,
-                                        headers={'referer': "https://live.acfun.cn/"})
-        api_data = api_req.json()
-        if api_data.get('result') != 1:
-            self.acws.close()
-            raise ValueError(f"{api_data['result']}: {api_data['error_msg']}")
-        self.live_room = api_data.get('data')
-        self.live_ticket = random.choice(self.live_room.get("availableTickets"))
-        return self.live_room is not None
-
-    def get_live_gift_data(self):
-        if self.live_room is None:
-            return None
-        param = {
-            "subBiz": "mainApp",
-            "kpn": "ACFUN_APP",
-            "kpf": "PC_WEB",
-            "userId": self.acer.uid,
-            "did": self.acer.did
-        }
-        param = self.acer.update_token(param)
-        form_data = {
-            "visitorId": self.acer.uid,
-            "liveId": self.live_room.get("liveId"),
-        }
-        api_req = self.acer.client.post(apis['live_gift_list'], params=param, data=form_data,
-                                        headers={'referer': "https://live.acfun.cn/"})
-        api_data = api_req.json()
-        gifts = dict()
-        for gift in api_data.get('data', {}).get('giftList', []):
-            gifts.update({f"{gift['giftId']}": gift})
-        ext_gift = api_data.get('data', {}).get('externalDisplayGift', {}).get('giftList', [])
-        if len(ext_gift):
-            ext_gift = ext_gift[0]
-            ext_gift.update({"tipsDelayTime": api_data.get('data', {}).get('externalDisplayGiftTipsDelayTime', 0)})
-            gifts.update({f"{ext_gift['giftId']}": ext_gift})
-        return gifts
-
-    def ZtLiveCsEnterRoom_Request(self, uid: int):
-        self.get_aclive_room_info(uid)
+    def ZtLiveCsEnterRoom_Request(self, live_obj):
+        self.live_obj = live_obj
         enter_room_payload = ZtLiveCsEnterRoom_pb2.ZtLiveCsEnterRoom()
-        enter_room_payload.isAuthor = self.acer.uid == uid
+        enter_room_payload.isAuthor = self.acer.uid == live_obj.uid
         # enter_room_payload.reconnectCount = 0
         # enter_room_payload.lastErrorCode = 0
-        enter_room_payload.enterRoomAttach = self.live_room.get("enterRoomAttach")
+        enter_room_payload.enterRoomAttach = live_obj.enterRoomAttach
         enter_room_payload.clientLiveSdkVersion = "kwai-acfun-live-link"
         return self.ZtLiveInteractive_CsCmd("ZtLiveCsEnterRoom", enter_room_payload)
 
@@ -532,7 +487,5 @@ class AcProtos:
         return self.ZtLiveInteractive_CsCmd("ZtLiveCsHeartbeat", heartbeat_payload)
 
     def ZtLiveInteractiveMessage_Request(self):
-        if self.live_room is None:
-            raise ValueError(f"Need Enter Live Rome First!!!\nUSE: ZtLiveCsEnterRoom_Request(uid)")
         return self.encode(2, "Push.ZtLiveInteractive.Message", bytes(), "mainApp")
 
