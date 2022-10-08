@@ -9,10 +9,12 @@ from hashlib import md5
 from Crypto import Random
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
-from blackboxprotobuf import protobuf_to_json
+from ..blackboxprotobuf import protobuf_to_json
 from google.protobuf.json_format import MessageToJson
 from google.protobuf.internal.python_message import GeneratedProtocolMessageType
 from google.protobuf.internal.containers import RepeatedScalarFieldContainer
+from google.protobuf.pyext._message import RepeatedScalarContainer
+from dataclasses import dataclass
 from .Im import PacketHeader_pb2, \
     UpstreamPayload_pb2, DownstreamPayload_pb2, \
     RegisterRequest_pb2, RegisterResponse_pb2, \
@@ -49,15 +51,23 @@ from .Live import ZtLiveCsCmd_pb2, \
     ZtLiveScStatusChanged_pb2, \
     ZtLiveScTicketInvalid_pb2
 
-
-apis = {
-    'im_image_upload': "https://sixinpic.kuaishou.com/rest/v2/app/upload",
-}
+__author__ = 'dolacmeo'
 
 
-class ErrorMessage(proto.Message):
-    errorCode = proto.Field(proto.INT32, number=3)
-    errorMessage = proto.Field(proto.STRING, number=5)
+def im_image_uploader(acer, to_uid: str, image_data: bytes) -> dict:
+    md5_hex = md5(image_data).digest()
+    head = {
+        "Content-Type": filetype.guess_mime(image_data),
+        "Content-MD5": base64.standard_b64encode(md5_hex),
+        "file-type": filetype.guess_extension(image_data),
+        "target": f"{to_uid}",
+        "download-verify-type": "1",
+    }
+    param = {'kpn': "ACFUN_APP"}
+    param = acer.update_token(param)
+    post_req = acer.client.post("https://sixinpic.kuaishou.com/rest/v2/app/upload",
+                                params=param, headers=head, data=image_data)
+    return post_req.json()
 
 
 def message_content_serialize(content: str):
@@ -78,15 +88,8 @@ def proto_user_serialize(uid: int):
     return User.serialize(user)
 
 
-class AcProtos:
-    seqId = 0
-    live_obj = None
-    live_room = None
-    live_ticket = None
-    live_heartbeat = 0
-    header_offset = 12
-    payload_offset = 16
-    client_config = {}
+@dataclass(frozen=True)
+class ProtosMap:
     command_rules = {
         "Basic.ClientConfigGet": ClientConfigGetResponse_pb2.ClientConfigGetResponse,
         "Basic.KeepAlive": KeepAliveResponse_pb2.KeepAliveResponse,
@@ -150,11 +153,24 @@ class AcProtos:
         "ZtLiveScTicketInvalid": ZtLiveScTicketInvalid_pb2.ZtLiveScTicketInvalid,
     }
 
-    def __init__(self, acws):
-        self.acws = acws
-        self.acer = self.acws.acer
 
-    def _aes_encrypt(self, key, payload):
+header_offset = 12
+payload_offset = 16
+
+
+class ProtosMaker:
+    seqId = 0
+    live_heartbeat = 0
+    appId = 0
+    instanceId = 0
+    live_obj = None
+
+    def __init__(self, acer, task_callback):
+        self.acer = acer
+        self.task = task_callback
+
+    @staticmethod
+    def aes_encrypt(key, payload):
         key = base64.standard_b64decode(key)
         iv = Random.new().read(AES.block_size)
         cipher = AES.new(key, AES.MODE_CBC, iv)
@@ -162,10 +178,11 @@ class AcProtos:
         result = cipher.encrypt(payload)
         return iv + result
 
-    def _aes_decrypt(self, key, data):
+    @staticmethod
+    def aes_decrypt(key, data):
         key = base64.standard_b64decode(key)
-        iv = data[:self.payload_offset]
-        payload = data[self.payload_offset:]
+        iv = data[:payload_offset]
+        payload = data[payload_offset:]
         cipher = AES.new(key, AES.MODE_CBC, iv)
         result = cipher.decrypt(payload)
         return unpad(result, AES.block_size, 'pkcs7')
@@ -177,19 +194,20 @@ class AcProtos:
         # print(f"packet_header_len: {packet_header_len} {message[4:8].hex()}")
         # print(f"payload_len: {payload_len} {message[8:12].hex()}")
         packet_header = PacketHeader_pb2.PacketHeader()
-        header = message[self.header_offset:self.header_offset + packet_header_len]
+        header = message[header_offset:header_offset + packet_header_len]
         packet_header.ParseFromString(header)
         # print(packet_header)
         # print("=" * 40)
-        payload_data = message[self.header_offset + packet_header_len:]
+        payload_data = message[header_offset + packet_header_len:]
         # print(f"packet_header.encryptionMode: {packet_header.encryptionMode}")
         if packet_header.encryptionMode == 1:  # kEncryptionServiceToken
-            decrypted_data = self._aes_decrypt(self.acer.tokens['ssecurity'], payload_data)
+            decrypted_data = self.aes_decrypt(self.acer.tokens['ssecurity'], payload_data)
         elif packet_header.encryptionMode == 2:  # kEncryptionSessionKey
-            decrypted_data = self._aes_decrypt(self.acer.tokens['sessKey'], payload_data)
+            decrypted_data = self.aes_decrypt(self.acer.tokens['sessKey'], payload_data)
         else:  # kEncryptionNone
             decrypted_data = payload_data
-            stream_payload = ErrorMessage.deserialize(decrypted_data)
+            stream_payload = ErrorMessage_pb2.ErrorMessage()
+            stream_payload.ParseFromString(decrypted_data)
             print(stream_payload)
             raise BufferError(self.seqId, stream_payload.errorMessage)
         # decrypted_data = decrypted_data[:packet_header.decodedPayloadLen]
@@ -207,7 +225,7 @@ class AcProtos:
             print(stream_payload)
             raise ValueError(f"[{stream_payload.errorCode}] {stream_payload.errorMsg}")
         command = stream_payload.command
-        proto_class = self.command_rules.get(command)
+        proto_class = ProtosMap.command_rules.get(command)
         if command == "Basic.Register":  # 初始化注册
             return self.BasicRegister_Response(packet_header, stream_payload)
         elif command == "Global.ZtLiveInteractive.CsCmd":  # 直播相关
@@ -215,7 +233,7 @@ class AcProtos:
             cmd_payload.ParseFromString(stream_payload.payloadData)
             ack_type = cmd_payload.cmdAckType
             ack_payload = cmd_payload.payload
-            if ack_type in self.live_acks:
+            if ack_type in ProtosMap.live_acks:
                 return self.ZtLiveCsCmdAck_Response(ack_type, packet_header, ack_payload)
             if cmd_payload.errorCode:
                 print(f"LiveError[{cmd_payload.errorCode}] {cmd_payload.errorMsg}")
@@ -225,11 +243,11 @@ class AcProtos:
             msg_type = live_push.messageType
             msg_payload = gzip.decompress(live_push.payload) \
                 if live_push.compressionType == 2 else live_push.payload
-            if msg_type in self.live_messages:
+            if msg_type in ProtosMap.live_messages:
                 return self.ZtLiveInteractive_Message(msg_type, packet_header, msg_payload)
             else:
                 print(f"LiveMessageUnknown: {msg_type}\n{msg_payload}")
-        elif isinstance(proto_class, GeneratedProtocolMessageType):  # 可解析消息
+        elif proto_class is not None:  # 可解析消息
             return self.message_response(proto_class, packet_header, stream_payload)
         # 未知消息解析
         return self.unknown_response(packet_header, stream_payload)
@@ -237,31 +255,36 @@ class AcProtos:
     def BasicRegister_Response(self, packet_header, stream_payload):
         reg_resp = RegisterResponse_pb2.RegisterResponse()
         reg_resp.ParseFromString(stream_payload.payloadData)
-        self.acws.appId = packet_header.appId
-        self.acws.instanceId = packet_header.instanceId
+        self.appId = packet_header.appId
+        self.instanceId = packet_header.instanceId
         self.acer.tokens['sessKey'] = base64.standard_b64encode(reg_resp.sessKey)
         return packet_header.seqId, stream_payload.command, MessageToJson(reg_resp)
 
     def ZtLiveCsCmdAck_Response(self, ack_type, packet_header, ack_payload):
         if ack_type == "ZtLiveCsHeartbeatAck":
-            self.acws.task(*self.ZtLiveCsHeartbeat_Request())
-        payload = self.live_acks.get(ack_type)()
+            self.task(*self.ZtLiveCsHeartbeat_Request())
+        payload = ProtosMap.live_acks.get(ack_type)()
         payload.ParseFromString(ack_payload)
         return packet_header.seqId, f"LiveCmd.{ack_type}", json.loads(MessageToJson(payload))
 
     def ZtLiveInteractive_Message(self, msg_type, packet_header, msg_payload):
-        self.acws.task(*self.ZtLiveInteractiveMessage_Request())
-        payload = self.live_messages.get(msg_type)()
+        self.task(*self.ZtLiveInteractiveMessage_Request())
+        payload = ProtosMap.live_messages.get(msg_type)()
         payload.ParseFromString(msg_payload)
         those_msg = list()
         if msg_type in ["ZtLiveScActionSignal", "ZtLiveScStateSignal", "ZtLiveScNotifySignal"]:
             for item in payload.item:
                 signal = item.signalType
                 data = {"signal": f"{msg_type}.{signal}"}
-                loader = self.live_messages.get(f"{msg_type}.loader", {}).get(f"{signal}")
+                loader = ProtosMap.live_messages.get(f"{msg_type}.loader", {}).get(f"{signal}")
                 if loader is not None:
                     loader = loader()
-                    if isinstance(item.payload, RepeatedScalarFieldContainer):
+                    if isinstance(item.payload, (RepeatedScalarFieldContainer, RepeatedScalarContainer)):
+                        data['payload'] = list()
+                        for x in item.payload:
+                            loader.ParseFromString(x)
+                            data['payload'].append(json.loads(MessageToJson(loader)))
+                    elif isinstance(item.payload, list):
                         data['payload'] = list()
                         for x in item.payload:
                             loader.ParseFromString(x)
@@ -285,7 +308,7 @@ class AcProtos:
 
     def unknown_response(self, packet_header, stream_payload):
         message, typedef = protobuf_to_json(stream_payload.payloadData)
-        if stream_payload.command not in self.command_rules:
+        if stream_payload.command not in ProtosMap.command_rules:
             print(f"[seqId:{packet_header.seqId}] {stream_payload.command}")
             print(typedef)
             print(message)
@@ -312,14 +335,14 @@ class AcProtos:
         token_info.token = self.acer.tokens['api_st'].encode() \
             if self.acer.is_logined else self.acer.tokens['visitor_st'].encode()
         header = PacketHeader_pb2.PacketHeader()
-        header.appId = self.acws.appId
+        header.appId = self.appId
+        header.instanceId = self.instanceId
         header.uid = self.acer.uid
-        header.instanceId = self.acws.instanceId
         payload_len = len(payload_body)
         encrypted = payload_body
         if key_n in [1, 2]:
             key = self.acer.tokens['ssecurity'] if key_n == 1 else self.acer.tokens['sessKey']
-            encrypted = self._aes_encrypt(key, payload_body)
+            encrypted = self.aes_encrypt(key, payload_body)
         header.decodedPayloadLen = payload_len
         header.encryptionMode = key_n
         header.tokenInfo.CopyFrom(token_info)
@@ -354,7 +377,7 @@ class AcProtos:
         ztcommon_info.uid = int(self.acer.uid)
         if self.acer.is_logined:
             ztcommon_info.did = self.acer.did
-        payload.instanceId = self.acws.instanceId
+        payload.instanceId = self.instanceId
         payload.ztCommonInfo.CopyFrom(ztcommon_info)
         return self.encode(1, "Basic.Register", payload, "mainApp")
 
@@ -426,22 +449,8 @@ class AcProtos:
         byte_content = message_content_serialize(content)
         return self.Message_Request(target_uid, byte_content, 0)
 
-    def im_image_uploader(self, to_uid: str, image_data: bytes):
-        md5_hex = md5(image_data).digest()
-        head = {
-            "Content-Type": filetype.guess_mime(image_data),
-            "Content-MD5": base64.standard_b64encode(md5_hex),
-            "file-type": filetype.guess_extension(image_data),
-            "target": f"{to_uid}",
-            "download-verify-type": "1",
-        }
-        param = {'kpn': "ACFUN_APP"}
-        param = self.acer.update_token(param)
-        post_req = self.acer.client.post(apis['im_image_upload'], params=param, headers=head, data=image_data)
-        return post_req.json()
-
     def MessageImage_Request(self, target_uid: int, image_data: bytes):
-        uploader_resp = self.im_image_uploader(to_uid=f"{target_uid}", image_data=image_data)
+        uploader_resp = im_image_uploader(self.acer, to_uid=f"{target_uid}", image_data=image_data)
         ks_uri = uploader_resp.get('uri')
         if ks_uri is None:
             print(uploader_resp)
@@ -475,11 +484,11 @@ class AcProtos:
         return self.ZtLiveInteractive_CsCmd("ZtLiveCsEnterRoom", enter_room_payload)
 
     def ZtLiveCsHeartbeat_Request(self):
-        self.acws.task(*self.ZtLiveInteractiveMessage_Request())
+        self.task(*self.ZtLiveInteractiveMessage_Request())
         self.live_heartbeat += 1
         if self.live_heartbeat % 5 == 4:
             # 即启动Heartbeat定时器后每50秒，发送KeepAliveRequest，SeqId + 1
-            self.acws.task(*self.KeepAlive_Request())
+            self.task(*self.KeepAlive_Request())
         time.sleep(4)
         heartbeat_payload = ZtLiveCsHeartbeat_pb2.ZtLiveCsHeartbeat()
         heartbeat_payload.clientTimestampMs = int(time.time()) * 1000
@@ -488,4 +497,3 @@ class AcProtos:
 
     def ZtLiveInteractiveMessage_Request(self):
         return self.encode(2, "Push.ZtLiveInteractive.Message", bytes(), "mainApp")
-
