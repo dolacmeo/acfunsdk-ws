@@ -51,7 +51,9 @@ class AcLiveRoom(AcWebSocket):
                 live_obs_stream = live_adapt[self.player_config['quality']]['url']
                 cmd_list = [potplayer, live_obs_stream, "/title", f'"{live_title}"']
                 self._live_player = subprocess.Popen(cmd_list, creationflags=subprocess.CREATE_NO_WINDOW)
-        if command.startswith("LivePush.") and result:
+        elif command == "LiveCmd.ZtLiveCsHeartbeatAck" and seq_id % 3 == 0:
+            self.task(*self.protos.ZtLiveInteractiveMessage_Request())
+        elif command.startswith("LivePush.") and result:
             msg = ac_live_room_reader(result, self.live_room_gift, self.live_room_msg_bans)
             for n in msg:
                 print(n)
@@ -69,9 +71,9 @@ class AcLiveRoom(AcWebSocket):
             self.live_log = None
         self.ws.close()
 
-    def live_enter_room(self, uid: int, room_bans: [list, None] = None,
-                        potplayer: [str, None] = None, quality: int = 1,
-                        log_path: [str, os.PathLike, None] = None):
+    def enter_room(self, uid: int, room_bans: [list, None] = None,
+                   potplayer: [str, None] = None, quality: int = 1,
+                   log_path: [str, os.PathLike, None] = None):
         if self._main_thread is None or self.is_close is True:
             self.run()
         if isinstance(potplayer, str) and os.path.isfile(potplayer):

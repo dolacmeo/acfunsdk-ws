@@ -1,4 +1,4 @@
-acfunsdk>=0.9.6
+acfunsdk>=0.9.7
 rich>=12.5
 websocket-client>=1.4
 pycryptodome>=3.15

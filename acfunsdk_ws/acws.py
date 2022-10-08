@@ -88,8 +88,7 @@ class AcWebSocket:
             print(">>>>>>>> AcWebsocket  Ready  <<<<<<<<<")
         elif command == 'Basic.KeepAlive':
             pass
-        else:
-            self.reader(seq_id, command, result)
+        self.reader(seq_id, command, result)
 
     def reader(self, seq_id: int, command, result):
         print(f"{command=}")

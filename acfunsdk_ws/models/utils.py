@@ -332,8 +332,10 @@ class ProtosMaker:
         # ####################      Encoding        ################# #
         token_info = PacketHeader_pb2.TokenInfo__pb2.TokenInfo()
         token_info.tokenType = 1
-        token_info.token = self.acer.tokens['api_st'].encode() \
-            if self.acer.is_logined else self.acer.tokens['visitor_st'].encode()
+        if self.acer.is_logined:
+            token_info.token = self.acer.tokens['api_st'].encode()
+        else:
+            token_info.token = self.acer.tokens['visitor_st'].encode()
         header = PacketHeader_pb2.PacketHeader()
         header.appId = self.appId
         header.instanceId = self.instanceId
@@ -366,17 +368,15 @@ class ProtosMaker:
         device_info = RegisterRequest_pb2.DeviceInfo__pb2.DeviceInfo()
         device_info.platformType = 9
         device_info.deviceModel = "h5"
-        if self.acer.is_logined:
-            device_info.deviceId = self.acer.did
+        device_info.deviceId = self.acer.did
         payload.deviceInfo.CopyFrom(device_info)
         payload.presenceStatus = 1
         payload.appActiveStatus = 1
         ztcommon_info = RegisterRequest_pb2.ZtCommonInfo__pb2.ZtCommonInfo()
         ztcommon_info.kpn = "ACFUN_APP"
         ztcommon_info.kpf = "PC_WEB"
-        ztcommon_info.uid = int(self.acer.uid)
-        if self.acer.is_logined:
-            ztcommon_info.did = self.acer.did
+        ztcommon_info.uid = self.acer.uid
+        ztcommon_info.did = self.acer.did
         payload.instanceId = self.instanceId
         payload.ztCommonInfo.CopyFrom(ztcommon_info)
         return self.encode(1, "Basic.Register", payload, "mainApp")
