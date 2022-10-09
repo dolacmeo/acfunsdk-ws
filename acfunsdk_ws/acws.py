@@ -91,8 +91,8 @@ class AcWebSocket:
         # print(">>>>>>>> AcWebsocket  CLOSED <<<<<<<<<")
         pass
 
-    def _on_error(self):
-        # print(f"ONERROR: {e=}")
+    def _on_error(self, ws, e):
+        print(f"ONERROR: {e=}")
         self.close()
 
     def close(self):

@@ -31,7 +31,6 @@ WebSocket通信及数据处理:
 + [`protobuf`](https://pypi.org/project/protobuf/)`==3.20.1`
 + [`proto-plus`](https://pypi.org/project/proto-plus/)`==1.22.1`
 + [`filetype`](https://pypi.org/project/filetype/)`>=1.1`
-+ [`rich`](https://pypi.org/project/rich/)`>=12.5`
 
 >内置+修改: 
 >
