@@ -21,22 +21,21 @@ acfunsdk是 **非官方的 [AcFun弹幕视频网][acfun.cn]** Python库。
 <details>
 <summary>依赖库</summary>
 
->内置+修改: 位于 `libs` 文件夹内
->
->+ [`blackboxprotobuf`](https://pypi.org/project/blackboxprotobuf/)
-
 **依赖: 包含在 `requirements.txt` 中**
 
-基础网络请求及页面解析:
-+ [`httpx`](https://pypi.org/project/httpx/)`>=0.23`
++ [`acfunsdk`](https://pypi.org/project/acfunsdk/)`>=0.9.7`
 
 WebSocket通信及数据处理:
 + [`websocket-client`](https://pypi.org/project/websocket-client/)`>=1.4`
 + [`pycryptodome`](https://pypi.org/project/pycryptodome/)`>=3.15`
 + [`protobuf`](https://pypi.org/project/protobuf/)`==3.20.1`
 + [`proto-plus`](https://pypi.org/project/proto-plus/)`==1.22.1`
-+ [`psutil`](https://pypi.org/project/psutil/)`>=5.9`
++ [`filetype`](https://pypi.org/project/filetype/)`>=1.1`
 + [`rich`](https://pypi.org/project/rich/)`>=12.5`
+
+>内置+修改: 
+>
+>+ [`blackboxprotobuf`](https://pypi.org/project/blackboxprotobuf/)
 
 </details>
 

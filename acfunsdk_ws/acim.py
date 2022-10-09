@@ -1,6 +1,4 @@
 # coding=utf-8
-import json
-import time
 from .acws import AcWebSocket
 
 __author__ = 'dolacmeo'
@@ -13,9 +11,7 @@ class AcIM(AcWebSocket):
         super().__init__(acer, ws_links)
 
     def reader(self, seq_id: int, command, result):
-        print("=" * 40)
-        print(f"{command=}")
-        print(f"{result=}")
+        pass
 
     def im_get_sessions(self):
         message = self.protos.MessageSession_Request()
