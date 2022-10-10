@@ -1,16 +1,12 @@
 # coding=utf-8
 from .acws import AcWebSocket
-from acfunsdk import Acer
-from acfunsdk.source import AcSource
 
 __author__ = 'dolacmeo'
 
 
 class AcIM(AcWebSocket):
 
-    def __init__(self, acer: Acer, ws_links: [list, None] = None):
-        assert acer.is_logined is True
-        ws_links = AcSource.websocket_links if ws_links is None else ws_links
+    def __init__(self, acer, ws_links: [list, None] = None):
         super().__init__(acer, ws_links)
 
     def reader(self, seq_id: int, command, result):
