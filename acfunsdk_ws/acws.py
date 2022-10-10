@@ -1,7 +1,6 @@
 # coding=utf-8
 import time
 import random
-import threading
 import websocket
 from .models.utils import ProtosMaker
 
@@ -42,15 +41,12 @@ class AcWebSocket:
         self.listenner = dict()
 
     def run(self):
-        def _run():
-            self.ws.run_forever(
-                ping_interval=10, ping_timeout=5,
-                skip_utf8_validation=True,
-                origin="live.acfun.cn",
-            )
-        self._main_thread = threading.Thread(target=_run)
-        self._main_thread.start()
         self.is_close = False
+        self.ws.run_forever(
+            ping_interval=10, ping_timeout=5,
+            skip_utf8_validation=True,
+            origin="live.acfun.cn",
+        )
         return self
 
     def task(self, seq_id: int, command, content):
@@ -101,11 +97,16 @@ class AcWebSocket:
         pass
 
     def _on_error(self, ws, e):
-        print(f"ONERROR: {e=}")
-        self.close()
+        if isinstance(e, KeyboardInterrupt):
+            print(f"bye~")
+            self.close()
+        else:
+            print(f"ONERROR: {e=}")
+            self.close()
 
     def close(self):
-        self.task(*self.protos.Unregister_Request())
+        if self.is_register_done:
+            self.task(*self.protos.Unregister_Request())
         self.is_close = True
         self.ws.close()
 

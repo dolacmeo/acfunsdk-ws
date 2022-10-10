@@ -167,9 +167,9 @@ class AcLiveReader:
             if ["comment"] == list(payload.keys()):
                 payload = payload.get("comment", [])
         for item in payload:
-            sname = signal
-            if self.config.get("type_name", True):
-                mtype = message_types.get(mtype)
+            mname, sname = mtype, signal
+            if self.config.get("type_name", True) is True:
+                mname = message_types.get(mtype)
                 sname = signal_types.get(signal)
             stime = item.get("sendTimeMs")
             if self.config.get("time_tans", True) is True:
@@ -189,5 +189,5 @@ class AcLiveReader:
                 print(item)
             self.temps.append(dict(zip(
                 ["message", "signal", "time", "user", "content"],
-                [mtype, sname, stime, user, content]
+                [mname, sname, stime, user, content]
             )))
