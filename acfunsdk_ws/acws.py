@@ -4,10 +4,17 @@ import random
 import threading
 import websocket
 from .models.utils import ProtosMaker
-from acfunsdk import Acer
-from acfunsdk.source import AcSource
 
 __author__ = 'dolacmeo'
+
+websocket_links = [
+    # "wss://klink-newproduct-ws1.kwaizt.com",
+    "wss://klink-newproduct-ws2.kwaizt.com",
+    "wss://klink-newproduct-ws3.kwaizt.com",
+    # "wss://klink-newproduct-ws1.kuaishouzt.com",
+    "wss://klink-newproduct-ws2.kuaishouzt.com",
+    "wss://klink-newproduct-ws3.kuaishouzt.com",
+]
 
 
 class AcWebSocket:
@@ -18,10 +25,10 @@ class AcWebSocket:
     is_register_done = False
     is_close = True
 
-    def __init__(self, acer: [Acer, None] = None, ws_links: [list, None] = None):
+    def __init__(self, acer, ws_links: [list, None] = None):
         # websocket.enableTrace(True)
-        self.acer = Acer() if acer is None else acer
-        self.ws_link = random.choice(AcSource.websocket_links if ws_links is None else ws_links)
+        self.acer = acer
+        self.ws_link = random.choice(websocket_links if ws_links is None else ws_links)
         self.protos = ProtosMaker(self.acer, self.task)
         self.ws = websocket.WebSocketApp(
             url=self.ws_link,

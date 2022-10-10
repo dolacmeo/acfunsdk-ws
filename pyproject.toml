@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "acfunsdk-ws"
-version = "0.1.1"
+version = "0.1.2"
 description = "acfunsdk - websocket"
 license = "MIT"
 authors = ["dolacmeo <dolacmeo@gmail.com>"]
